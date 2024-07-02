@@ -12,14 +12,17 @@ let mean_squared_error ~image_1 ~image_2 =
     , factor *. square (b - b_1) ))
 ;;
 
-let _get_sub_image ~x ~y ~image ~width ~height =
+let get_sub_image ~x ~y ~image ~width ~height =
   let img_width = Image.width image in
   let img_height = Image.height image in
   let x_start, x_end = max 0 (x - width), min (img_width - 1) (x + width) in
   let y_start, y_end =
     max 0 (y - height), min (img_height - 1) (y + height)
   in
-  Image.slice image ~x_start ~x_end ~y_start ~y_end
+  match x_end - x_start, y_end - y_start with
+  | x_diff, y_diff when x_diff = 2 * width && y_diff = 2 * height ->
+    Some ((x, y), Image.slice image ~x_start ~x_end ~y_start ~y_end)
+  | _ -> None
 ;;
 
 let mag v1 =
@@ -27,21 +30,42 @@ let mag v1 =
   sqrt ((x1 *. x1) +. (y1 *. y1) +. (z1 *. z1))
 ;;
 
-let _find_similar ~image ~sub_images =
+let find_similar ~image ~sub_images =
   let min_img, _min_mse =
     List.fold
-      ~init:(image, Float.max_value)
+      ~init:(((0, 0), image), Float.max_value)
       sub_images
-      ~f:(fun (min_img, min_mse) img ->
+      ~f:(fun ((min_idx, min_img), min_mse) (cord, img) ->
         let tmp = mag (mean_squared_error ~image_1:image ~image_2:img) in
         match Float.O.(tmp < min_mse) with
-        | true -> img, tmp
-        | false -> min_img, min_mse)
+        | true -> (cord, img), tmp
+        | false -> (min_idx, min_img), min_mse)
   in
   min_img
 ;;
 
-let transform image ~moves:_ ~width:_ ~height:_ = image
+let get_sub_regions ~image ~width ~height =
+  Image.foldi image ~init:[] ~f:(fun ~x ~y acc _ ->
+    match get_sub_image ~x ~y ~image ~width ~height with
+    | Some elem -> elem :: acc
+    | None -> acc)
+;;
+
+let transform image ~moves ~width ~height =
+  let img_width, img_height = Image.width image, Image.height image in
+  let x_start, y_start = Random.int width, Random.int height in
+  let x_end =
+    if x_start + width < img_width then x_start + width else x_start - width
+  in
+  let y_end =
+    if y_start + height < img_height
+    then y_start + height
+    else y_start - height
+  in
+  let region_1 = Image.slice image ~x_start ~x_end ~y_start ~y_end in
+  let targets = get_sub_regions ~image ~width ~height in
+  let region_2 = find_similar ~image:region_1 ~sub_images:targets in
+;;
 
 let command =
   Command.basic
