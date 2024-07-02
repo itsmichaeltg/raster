@@ -9,5 +9,7 @@ let command =
     ; "dither", Dither.command
     ; "solarize", Solarize.command
     ; "mosaic", Mosaic.command
+    ; "dither-color", Dither_color.command
+    ; "edge", Edge.command
     ]
 ;;

@@ -22,6 +22,7 @@ let _old_transform image ~threshold =
 
 let transform image ~threshold =
   let img_max = Image.max_val image in
+  let threshold = (threshold *. (img_max |> Float.of_int)) |> Float.to_int in
   Image.map image ~f:(fun (r, g, b) ->
     let r = if r >= threshold then img_max - r else r in
     let g = if g >= threshold then img_max - g else g in
@@ -41,7 +42,7 @@ let command =
       and threshold =
         flag
           "threshold"
-          (required Command.Param.int)
+          (required Command.Param.float)
           ~doc:"if a color is above the threshold, the color is inverted"
       in
       fun () ->
@@ -57,7 +58,7 @@ let command =
 let%expect_test "solarize_test" =
   let img =
     Image.load_ppm ~filename:"../images/meadow.ppm"
-    |> transform ~threshold:26214
+    |> transform ~threshold:0.4
   in
   let ref_img =
     Image.load_ppm ~filename:"../images/reference-meadow_solarize.ppm"
