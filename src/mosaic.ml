@@ -13,11 +13,12 @@ let mean_squared_error ~image_1 ~image_2 =
 ;;
 
 let get_sub_image ~x ~y ~image ~width ~height =
+  let width, height = width / 2, height / 2 in
   let img_width = Image.width image in
   let img_height = Image.height image in
-  let x_start, x_end = max 0 (x - width), min (img_width - 1) (x + width) in
+  let x_start, x_end = max 0 (x - width), min (img_width - 1) (x + (width + 1)) in
   let y_start, y_end =
-    max 0 (y - height), min (img_height - 1) (y + height)
+    max 0 (y - height), min (img_height - 1) (y + (height + 1))
   in
   match x_end - x_start, y_end - y_start with
   | x_diff, y_diff when x_diff = 2 * width && y_diff = 2 * height ->
@@ -30,16 +31,16 @@ let mag v1 =
   sqrt ((x1 *. x1) +. (y1 *. y1) +. (z1 *. z1))
 ;;
 
-let find_similar ~image ~sub_images =
-  let min_img, _min_mse =
+let find_similar ~orig ~image ~sub_images =
+  let min_img, _ =
     List.fold
       ~init:(((0, 0), image), Float.max_value)
       sub_images
       ~f:(fun ((min_idx, min_img), min_mse) (cord, img) ->
         let tmp = mag (mean_squared_error ~image_1:image ~image_2:img) in
-        match Float.O.(tmp < min_mse) with
-        | true -> (cord, img), tmp
-        | false -> (min_idx, min_img), min_mse)
+        match Float.O.(tmp < min_mse), not (Tuple2.equal ~eq1:Int.equal ~eq2:Int.equal cord orig) with
+        | true, true -> (cord, img), tmp
+        | _ -> (min_idx, min_img), min_mse)
   in
   min_img
 ;;
@@ -51,7 +52,27 @@ let get_sub_regions ~image ~width ~height =
     | None -> acc)
 ;;
 
-let transform image ~moves ~width ~height =
+let swap coord_1 coord_2 ~image =
+  List.iter2_exn coord_2 coord_1 ~f:(fun (x_2, y_2) (x_1, y_1) ->
+    let tmp_pixel = Image.get image ~x:x_2 ~y:y_2 in
+    Image.set image ~x:x_2 ~y:y_2 (Image.get image ~x:x_1 ~y:y_1);
+    Image.set image ~x:x_1 ~y:y_2 tmp_pixel)
+;;
+
+let rec get_nums start limit =
+  match start < limit with
+  | true -> get_nums (start + 1) limit @ [ start ]
+  | false -> []
+;;
+
+let get_coords x_start x_end y_start y_end =
+  let x_range = get_nums x_start x_end in
+  let y_range = get_nums y_start y_end in
+  List.fold x_range ~init:[] ~f:(fun acc x ->
+    acc @ List.fold y_range ~init:[] ~f:(fun acc_2 y -> acc_2 @ [ x, y ]))
+;;
+
+let run image ~width ~height =
   let img_width, img_height = Image.width image, Image.height image in
   let x_start, y_start = Random.int width, Random.int height in
   let x_end =
@@ -64,7 +85,20 @@ let transform image ~moves ~width ~height =
   in
   let region_1 = Image.slice image ~x_start ~x_end ~y_start ~y_end in
   let targets = get_sub_regions ~image ~width ~height in
-  let region_2 = find_similar ~image:region_1 ~sub_images:targets in
+  let (x, y), _region_2 = find_similar ~orig:(x_start, y_start) ~image:region_1 ~sub_images:targets in
+  let x_start2, x_end2 = x - (width / 2), x + (width / 2) in
+  let y_start2, y_end2 = y - (height / 2), y + (height / 2) in
+  let coord_1 = get_coords x_start x_end y_start y_end in
+  let coord_2 = get_coords x_start2 x_end2 y_start2 y_end2 in
+  swap coord_1 coord_2 ~image
+;;
+
+let rec transform image ~moves ~width ~height =
+  match moves > 0 with
+  | true ->
+    run image ~width ~height;
+    transform image ~moves:(moves - 1) ~width ~height
+  | false -> image
 ;;
 
 let command =
